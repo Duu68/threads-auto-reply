@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard - Threads Auto Reply</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #fff; padding: 20px; }
+  .container { max-width: 800px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 20px 0 32px; border-bottom: 1px solid #222; margin-bottom: 32px; }
+  header h1 { font-size: 22px; }
+  header span { color: #888; font-size: 14px; }
+  .section-title { font-size: 18px; font-weight: 600; margin-bottom: 16px; }
+  .add-rule { background: #111; border: 1px solid #333; border-radius: 12px; padding: 24px; margin-bottom: 32px; }
+  .form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  input, textarea, select { background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 12px 16px; border-radius: 8px; font-size: 14px; outline: none; }
+  input:focus, textarea:focus, select:focus { border-color: #555; }
+  input.keyword { flex: 1; min-width: 150px; }
+  textarea.reply { flex: 2; min-width: 200px; resize: none; height: 48px; }
+  select.match { width: 120px; }
+  .btn-add { background: #fff; color: #000; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+  .btn-add:hover { opacity: 0.85; }
+  .rules-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 32px; }
+  .rule-card { background: #111; border: 1px solid #222; border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; }
+  .rule-card.disabled { opacity: 0.4; }
+  .rule-keyword { background: #1a1a1a; padding: 4px 12px; border-radius: 20px; font-size: 13px; color: #aaa; white-space: nowrap; }
+  .rule-reply { flex: 1; font-size: 14px; color: #ddd; }
+  .rule-match { font-size: 12px; color: #555; white-space: nowrap; }
+  .btn-toggle { background: none; border: 1px solid #333; color: #888; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .btn-toggle:hover { border-color: #555; }
+  .btn-delete { background: none; border: none; color: #555; cursor: pointer; font-size: 18px; padding: 4px 8px; }
+  .btn-delete:hover { color: #ff4444; }
+  .logs { background: #111; border: 1px solid #222; border-radius: 12px; padding: 20px; }
+  .log-item { padding: 10px 0; border-bottom: 1px solid #1a1a1a; font-size: 13px; color: #888; }
+  .log-item:last-child { border-bottom: none; }
+  .log-item strong { color: #ccc; }
+  .empty { text-align: center; color: #444; padding: 40px; font-size: 14px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 20px; border-radius: 8px; border: none; background: #1a1a1a; color: #888; cursor: pointer; font-size: 14px; }
+  .tab.active { background: #fff; color: #000; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🧵 Threads Auto Reply</h1>
+    <span id="username">載入中...</span>
+  </header>
+
+  <div class="section-title">新增關鍵詞規則</div>
+  <div class="add-rule">
+    <div class="form-row">
+      <input class="keyword" id="keyword" placeholder="關鍵詞（如：價格、多少錢）" />
+      <select class="match" id="match_type">
+        <option value="contains">包含</option>
+        <option value="exact">完全符合</option>
+      </select>
+      <textarea class="reply" id="reply_text" placeholder="自動回覆內容"></textarea>
+      <button class="btn-add" onclick="addRule()">新增</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('rules', this)">規則列表</button>
+    <button class="tab" onclick="switchTab('logs', this)">回覆紀錄</button>
+  </div>
+
+  <div id="tab-rules">
+    <div class="rules-list" id="rules-list">
+      <div class="empty">還沒有規則，新增一個吧！</div>
+    </div>
+  </div>
+
+  <div id="tab-logs" style="display:none">
+    <div class="logs" id="logs-list">
+      <div class="empty">還沒有回覆紀錄</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const userId = params.get('user_id');
+  if (!userId) location.href = '/';
+
+  async function load() {
+    const res = await fetch(`/api/rules/${userId}`);
+    const data = await res.json();
+    if (data.user) document.getElementById('username').textContent = '@' + data.user.username;
+    renderRules(data.rules);
+  }
+
+  function renderRules(rules) {
+    const el = document.getElementById('rules-list');
+    if (!rules.length) { el.innerHTML = '<div class="empty">還沒有規則，新增一個吧！</div>'; return; }
+    el.innerHTML = rules.map(r => `
+      <div class="rule-card ${r.enabled ? '' : 'disabled'}" id="rule-${r.id}">
+        <span class="rule-keyword">${r.keyword}</span>
+        <span class="rule-match">${r.match_type === 'exact' ? '完全符合' : '包含'}</span>
+        <span class="rule-reply">${r.reply_text}</span>
+        <button class="btn-toggle" onclick="toggleRule(${r.id})">${r.enabled ? '關閉' : '開啟'}</button>
+        <button class="btn-delete" onclick="deleteRule(${r.id})">✕</button>
+      </div>
+    `).join('');
+  }
+
+  async function addRule() {
+    const keyword = document.getElementById('keyword').value.trim();
+    const reply_text = document.getElementById('reply_text').value.trim();
+    const match_type = document.getElementById('match_type').value;
+    if (!keyword || !reply_text) { alert('請填寫關鍵詞和回覆內容'); return; }
+
+    await fetch('/api/rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, keyword, reply_text, match_type })
+    });
+    document.getElementById('keyword').value = '';
+    document.getElementById('reply_text').value = '';
+    load();
+  }
+
+  async function deleteRule(id) {
+    if (!confirm('確定刪除？')) return;
+    await fetch(`/api/rules/${id}`, { method: 'DELETE' });
+    load();
+  }
+
+  async function toggleRule(id) {
+    await fetch(`/api/rules/${id}/toggle`, { method: 'PATCH' });
+    load();
+  }
+
+  async function loadLogs() {
+    const res = await fetch(`/api/logs/${userId}`);
+    const logs = await res.json();
+    const el = document.getElementById('logs-list');
+    if (!logs.length) { el.innerHTML = '<div class="empty">還沒有回覆紀錄</div>'; return; }
+    el.innerHTML = logs.map(l => `
+      <div class="log-item">
+        <strong>${l.keyword_matched}</strong> → ${l.reply_sent}
+        <span style="float:right">${new Date(l.replied_at).toLocaleString('zh-TW')}</span>
+      </div>
+    `).join('');
+  }
+
+  function switchTab(tab, btn) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-rules').style.display = tab === 'rules' ? 'block' : 'none';
+    document.getElementById('tab-logs').style.display = tab === 'logs' ? 'block' : 'none';
+    if (tab === 'logs') loadLogs();
+  }
+
+  load();
+</script>
+</body>
+</html>
