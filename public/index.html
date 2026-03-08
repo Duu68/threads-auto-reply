@@ -27,7 +27,8 @@
 <script>
   const params = new URLSearchParams(location.search);
   if (params.get('error')) {
-    document.getElementById('error').textContent = '授權失敗，請重試';
+    const detail = params.get('detail') ? `: ${params.get('detail')}` : '';
+    document.getElementById('error').textContent = '授權失敗，請重試' + detail;
   }
 </script>
 </body>

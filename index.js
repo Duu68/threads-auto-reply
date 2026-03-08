@@ -66,8 +66,9 @@ app.get('/auth/callback', async (req, res) => {
     const user = db.prepare('SELECT * FROM users WHERE threads_user_id = ?').get(id);
     res.redirect(`/dashboard?user_id=${user.id}`);
   } catch (err) {
-    console.error('Auth error:', err.response?.data || err.message);
-    res.redirect('/?error=auth_failed');
+    const errDetail = JSON.stringify(err.response?.data || err.message);
+    console.error('Auth error:', errDetail);
+    res.redirect(`/?error=auth_failed&detail=${encodeURIComponent(errDetail)}`);
   }
 });
 
